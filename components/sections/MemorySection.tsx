@@ -34,12 +34,6 @@ const COMPARE_ROWS = [
     crm: 'One value per field, no ranking',
     salency: 'Confidence-ranked, top-N per pain',
   },
-  {
-    signal: 'Pattern across accounts',
-    crm: 'CSV export to a spreadsheet',
-    salency:
-      'Search \u201csettlement delay\u201d, every account that flagged it surfaces',
-  },
 ];
 
 export function MemorySection() {
