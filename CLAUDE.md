@@ -28,41 +28,55 @@ Rate limiting in `app/api/send/route.ts` and `app/api/subscribe/route.ts` is gat
 
 ## Architecture
 
-Single-page marketing site. **Next.js 16 App Router**, **React 19**, **TypeScript**, **Tailwind CSS v4**.
+Multi-route marketing site. **Next.js 16 App Router**, **React 19**, **TypeScript**, **Tailwind CSS v4**.
+
+### Routes
+
+- `app/page.tsx` — Home. Composes section components from `components/sections/` directly (no client wrapper).
+- `app/blog/page.tsx`, `app/blog/[slug]/page.tsx` — Build log index + post pages. Posts authored as TSX in `content/posts/`, registered in `content/posts/index.ts`.
+- `app/pilot/page.tsx` — Pilot application landing.
+- `app/investors/`, `app/our-story/`, `app/why-salency/`, `app/pricing/`, `app/changelog/`, `app/memory/` — Standalone marketing/content routes.
+- `app/privacy/page.tsx`, `app/terms/page.tsx` — Legal.
+- `app/sitemap.ts`, `app/robots.ts`, `app/opengraph-image.tsx` — SEO/social.
 
 ### Page composition
 
-- `app/page.tsx` — Thin server shell: background layers, `<Header />`, `<PageClient />`, footer. Does **not** contain section content.
-- `components/PageClient.tsx` — Client component that owns the whole page body. All marketing sections (Problem, Solution, Gong Comparison, Results, Team, Pilot) are defined as local functions inside this file. Holds the `capturedEmail` state that flows from the hero email capture into the pilot form.
-- `components/HeroSection.tsx`, `SocialProof.tsx`, `FounderVideo.tsx`, `HeroEmailCapture.tsx`, `InteractiveDemo.tsx`, `HeroMock.tsx` — Hero-area pieces composed by `PageClient`.
-- `app/privacy/page.tsx`, `app/terms/page.tsx` — Static legal pages.
+- `app/layout.tsx` — Root. Loads fonts, mounts `<JsonLd />` (Organization + WebSite schema), `<PilotModal />` (globally available), `<Analytics />`.
+- `components/MarketingHeader.tsx` — Top nav, used on all marketing pages.
+- `components/sections/*` — Page-level sections (HeroSection, HubSection, HowItWorksSection, NotDoSection, CtaSection, SiteFooter, ProblemSection, ThesisSection, MemorySection, MemoryStackSection, NotetakerSection, CompoundsSection, NotForYouSection, OurStorySection, InvestorsSection, PilotApplication, PilotCtaSection, ComingSoon). Most are `'use client'`.
+- `components/HeroArtifact.tsx` — Animated hero visual. `components/FounderAvatar.tsx`, `lib/founders.tsx` — Team data.
+- Blog chrome: `components/PostToc.tsx`, `components/ShareButtons.tsx`, `components/SubscribeForm.tsx`. Legal chrome: `components/LegalToc.tsx`.
 
-When editing marketing copy: check `components/PageClient.tsx` first. `app/page.tsx` only contains header/footer chrome.
+When editing marketing copy: start in `components/sections/` — section names match home-page order (Hero, Hub, HowItWorks, NotDo, Cta).
 
-### API + form flow
+### Pilot form flow
 
-- `components/EmailForm.tsx` — React Hook Form. Hidden honeypot `website` field. POSTs to `/api/send`. Accepts a `prefillEmail` prop from `PageClient` (wired through `HeroSection` → `setCapturedEmail`).
-- `app/api/send/route.ts` — Single POST endpoint. Flow: Upstash rate limit (if configured) → honeypot short-circuit returns `{success, status:'filtered'}` → Zod validate → send two emails via Resend (admin to `founders@salency.ai`, confirmation to user) with `Promise.allSettled` so admin failure 500s but user-confirmation failure is tolerated (sandbox restriction surfaced in the response).
-- HTML in emails uses a manual `escapeHtml` — do not concatenate user input into the templates without running it through that helper.
+The pilot form is a **global modal**, not inline on the page.
+
+- `components/PilotModal.tsx` exports a `<PilotModal />` mounted once in `app/layout.tsx`, plus an `openPilotModal(email?)` helper that dispatches a `CustomEvent('open-pilot-modal')`. Any CTA can open the modal; the optional `email` arg prefills the form.
+- `components/EmailForm.tsx` — React Hook Form, rendered inside the modal. Hidden honeypot `website` field. POSTs to `/api/send`.
+- `components/SubscribeForm.tsx` — Blog subscribe widget, POSTs to `/api/subscribe`.
+- `app/api/send/route.ts` — Pilot endpoint. Flow: Upstash rate limit (if configured) → honeypot short-circuit returns `{success, status:'filtered'}` → Zod validate → send two emails via Resend (admin to `founders@salency.ai`, confirmation to user) with `Promise.allSettled` so admin failure 500s but user-confirmation failure is tolerated.
+- `app/api/subscribe/route.ts` — Blog subscribe. Adds contact to Resend Audience (`RESEND_AUDIENCE_ID`); 503 if unset.
+- HTML in emails uses a manual `escapeHtml` — do not concatenate user input into templates without it.
 
 ### Styling
 
 - Tailwind v4 — no `tailwind.config.ts`. Theme tokens live in `@theme` blocks inside `app/globals.css`.
 - Primary accent is **bright copper** `--copper: #FE8531`, with a full opacity ladder `--copper-a0` through `--copper-a60` for tints, hairlines, glows, and surface accents (used for CTAs, section eyebrows, checkmarks, founder badges, surfaces). The older cyan `--accent: #06b6d4` is still defined but rarely referenced — prefer `--copper` and the `--copper-aXX` ladder for all new work.
-- Background uses `--bg: #0E0C11` with `--bg-2: #121015` and `--bg-3: #1A171E` for alternating bands, plus `bg-noise` and `bg-mesh` layers rendered in `app/page.tsx`.
-- Fonts loaded in `app/layout.tsx` via `next/font/google`: **Instrument Sans** (body + display, bound via `--font-body` and `--font-display` at `app/globals.css:1936`), **Outfit** (large H1/H2 marks, `--font-outfit`), **Instrument Serif** (italic em accents, `--font-display` in some hero contexts), **Geist Sans** (selective utility text, `--font-geist-sans`), **Geist Mono** (eyebrows, dates, table labels, `--font-geist-mono`). The `--font-body` and `--font-display` tokens use literal font-family strings (`'Instrument Sans'`) rather than `var(--font-instrument-sans)` because next/font sets its CSS variable on `<body>` via className, not `:root` — see the comment at `globals.css:1924–1934`.
+- Background uses `--bg: #0E0C11` with `--bg-2: #121015` and `--bg-3: #1A171E` for alternating bands, plus `bg-noise` and `bg-mesh` layers.
+- Fonts loaded in `app/layout.tsx` via `next/font/google`: **Instrument Sans** (body + display, bound via `--font-body` and `--font-display` in `app/globals.css`), **Outfit** (large H1/H2 marks, `--font-outfit`), **Instrument Serif** (italic em accents, `--font-instrument-serif`), **Geist Sans** (selective utility text, `--font-geist-sans`), **Geist Mono** (eyebrows, dates, table labels, `--font-geist-mono`). The `--font-body` / `--font-display` tokens use literal font-family strings rather than `var(--font-instrument-sans)` because next/font sets its CSS variable on `<body>` via className, not `:root`.
 - `components/ScrollReveal.tsx` wraps below-fold sections; uses IntersectionObserver and respects `prefers-reduced-motion`.
-- `components/SpotlightCard.tsx` provides a mouse-tracked radial gradient for cards; `ProblemCard.tsx` is a server-component wrapper around it.
-- `packages/brand-reveal/` — portable animated wordmark ("Sales + Saliency" → "Salency") and loading-screen splash, packaged for drop-in use in other Salency frontend apps. Exports `<BrandReveal />`, `<BrandRevealSplash />`, plus two standalone stylesheets (`styles.css` = wordmark-only, `loading-screen.css` = full splash chrome + wordmark). Not consumed by this repo — kept as a design primitive only.
+- `packages/brand-reveal/` — portable animated wordmark ("Sales + Saliency" → "Salency") and loading-screen splash, packaged for drop-in use in other Salency frontend apps. Not consumed by this repo — kept as a design primitive only.
 - Prefer explicit `transition-property` lists over `transition-all`.
 
 ### Client/server split
 
-Server by default. Client components (`'use client'`): `PageClient`, `Header`, `HeroSection`, `HeroEmailCapture`, `HeroMock`, `InteractiveDemo`, `FounderVideo`, `SocialProof`, `EmailForm`, `ScrollReveal`, `SpotlightCard`. Because `PageClient` is a client boundary, everything it renders is effectively client — keep `app/page.tsx` and footer in the server tree if you want static rendering of the chrome.
+Server by default. Most `components/sections/*` are `'use client'` (HeroSection, HubSection, etc.) along with `MarketingHeader`, `PilotModal`, `EmailForm`, `SubscribeForm`, `ScrollReveal`, `HeroArtifact`. Page shells in `app/*/page.tsx` stay server components and inject metadata + JsonLd schema. Posts in `content/posts/` are TSX modules imported by `app/blog/[slug]/page.tsx` for static rendering.
 
-### Analytics
+### Analytics + SEO
 
-`@vercel/analytics` is mounted once in `app/layout.tsx` via `<Analytics />`. No other tracking.
+`@vercel/analytics` is mounted once in `app/layout.tsx` via `<Analytics />`. No other tracking. Schema.org JSON-LD is injected via `components/JsonLd.tsx` — Organization + WebSite live in the root layout; per-page schemas (SoftwareApplication, BlogPosting, etc.) are added in their own `page.tsx`. `app/sitemap.ts` and `app/robots.ts` generate `/sitemap.xml` and `/robots.txt`.
 
 ### Design system reference
 
